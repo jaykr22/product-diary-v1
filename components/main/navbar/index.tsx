@@ -20,8 +20,6 @@ export default function Navbar() {
   const pathname = usePathname()
   const { user, loading, signOut } = useAuth()
 
-  if (pathname === "/auth") return null
-
   // 드롭다운 외부 클릭 시 닫기
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -32,6 +30,8 @@ export default function Navbar() {
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
+
+  if (pathname === "/auth") return null
 
   const handleSignOut = async () => {
     setDropdownOpen(false)
