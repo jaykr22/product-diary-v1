@@ -11,8 +11,9 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
-      // 로그인 성공 → 메인 페이지로 리다이렉트
-      return NextResponse.redirect(`${origin}${next}`)
+      // 로그인 성공 → 대시보드로 리다이렉트
+      const redirectPath = next === "/" ? "/dashboard" : next
+      return NextResponse.redirect(`${origin}${redirectPath}`)
     }
   }
 
