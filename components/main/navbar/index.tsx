@@ -2,8 +2,10 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
+import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/AuthContext"
 
 const NAV_LINKS = [
   { label: "Features", href: "#features" },
@@ -13,6 +15,28 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const pathname = usePathname()
+  const { user, loading, signOut } = useAuth()
+
+  if (pathname === "/auth") return null
+
+  // 드롭다운 외부 클릭 시 닫기
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const handleSignOut = async () => {
+    setDropdownOpen(false)
+    await signOut()
+  }
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50">
@@ -61,29 +85,116 @@ export default function Navbar() {
           ))}
         </ul>
 
-        {/* ── 우측: Get Started + 모바일 햄버거 ── */}
+        {/* ── 우측: 사용자 메뉴 or Get Started + 모바일 햄버거 ── */}
         <div className="flex items-center gap-3">
 
-          {/* Get Started 버튼 (데스크탑) */}
-          <Link
-            href="/create"
-            id="nav-get-started"
-            className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-violet-500/20 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-violet-500/30"
-          >
-            Get Started
-            <svg
-              className="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {/* 로그인 상태에 따라 분기 (데스크탑) */}
+          {!loading && user ? (
+            /* ── 로그인된 상태: 아바타 + 드롭다운 ── */
+            <div className="relative hidden md:block" ref={dropdownRef}>
+              <button
+                id="nav-user-menu"
+                onClick={() => setDropdownOpen((prev) => !prev)}
+                className="flex items-center gap-2.5 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-4 text-sm font-medium text-white backdrop-blur-sm transition-all duration-300 hover:border-white/20 hover:bg-white/10"
+              >
+                {user.user_metadata?.avatar_url ? (
+                  <Image
+                    src={user.user_metadata.avatar_url}
+                    alt="프로필"
+                    width={28}
+                    height={28}
+                    className="rounded-full"
+                  />
+                ) : (
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-xs font-bold text-white">
+                    {(user.user_metadata?.full_name?.[0] ?? user.email?.[0] ?? "U").toUpperCase()}
+                  </div>
+                )}
+                <span className="max-w-[120px] truncate">
+                  {user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "사용자"}
+                </span>
+                <svg
+                  className={cn(
+                    "h-3.5 w-3.5 text-zinc-400 transition-transform duration-200",
+                    dropdownOpen && "rotate-180"
+                  )}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+
+              {/* 드롭다운 메뉴 */}
+              <div
+                className={cn(
+                  "absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 shadow-2xl backdrop-blur-xl transition-all duration-200",
+                  dropdownOpen
+                    ? "pointer-events-auto translate-y-0 opacity-100"
+                    : "pointer-events-none -translate-y-1 opacity-0"
+                )}
+              >
+                {/* 사용자 정보 */}
+                <div className="border-b border-white/5 px-4 py-3">
+                  <p className="truncate text-sm font-medium text-white">
+                    {user.user_metadata?.full_name ?? "사용자"}
+                  </p>
+                  <p className="truncate text-xs text-zinc-500">
+                    {user.email}
+                  </p>
+                </div>
+
+                {/* 로그아웃 */}
+                <div className="p-1.5">
+                  <button
+                    id="nav-sign-out"
+                    onClick={handleSignOut}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-zinc-400 transition-colors duration-200 hover:bg-white/5 hover:text-white"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <polyline points="16 17 21 12 16 7" />
+                      <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                    로그아웃
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* ── 비로그인 상태: Get Started 버튼 (데스크탑) ── */
+            <Link
+              href="/auth"
+              id="nav-get-started"
+              className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-violet-500/20 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-violet-500/30"
             >
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <polyline points="12 5 19 12 12 19" />
-            </svg>
-          </Link>
+              Get Started
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </Link>
+          )}
 
           {/* 햄버거 버튼 (모바일) */}
           <button
@@ -122,7 +233,7 @@ export default function Navbar() {
       <div
         className={cn(
           "md:hidden overflow-hidden transition-all duration-300",
-          mobileOpen ? "max-h-72 opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+          mobileOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0 pointer-events-none"
         )}
       >
         <div className="border-t border-white/5 bg-zinc-950/95 px-6 py-4 backdrop-blur-xl">
@@ -139,25 +250,76 @@ export default function Navbar() {
               </li>
             ))}
           </ul>
-          <Link
-            href="/create"
-            onClick={() => setMobileOpen(false)}
-            className="flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white"
-          >
-            Get Started
-            <svg
-              className="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+
+          {!loading && user ? (
+            /* 모바일: 로그인된 상태 */
+            <div className="space-y-2 border-t border-white/5 pt-4">
+              <div className="flex items-center gap-3 px-3 py-2">
+                {user.user_metadata?.avatar_url ? (
+                  <Image
+                    src={user.user_metadata.avatar_url}
+                    alt="프로필"
+                    width={32}
+                    height={32}
+                    className="rounded-full"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-sm font-bold text-white">
+                    {(user.user_metadata?.full_name?.[0] ?? user.email?.[0] ?? "U").toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-white">
+                    {user.user_metadata?.full_name ?? "사용자"}
+                  </p>
+                  <p className="truncate text-xs text-zinc-500">{user.email}</p>
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  setMobileOpen(false)
+                  await signOut()
+                }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-400 transition-colors duration-200 hover:bg-white/5 hover:text-white"
+              >
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                로그아웃
+              </button>
+            </div>
+          ) : (
+            /* 모바일: 비로그인 상태 */
+            <Link
+              href="/auth"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white"
             >
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <polyline points="12 5 19 12 12 19" />
-            </svg>
-          </Link>
+              Get Started
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </Link>
+          )}
         </div>
       </div>
 
