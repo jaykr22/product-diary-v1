@@ -9,6 +9,8 @@ interface BorderBeamProps {
     duration?: number
     delay?: number
     borderWidth?: number
+    colorFrom?: string
+    colorTo?: string
 }
 
 export function BorderBeam({
@@ -17,6 +19,8 @@ export function BorderBeam({
     duration = 10,
     delay = 0,
     borderWidth = 1.5,
+    colorFrom,
+    colorTo,
 }: BorderBeamProps) {
     useEffect(() => {
         const style = document.createElement("style")
@@ -34,6 +38,11 @@ export function BorderBeam({
         }
     }, [])
 
+    const gradientStyle =
+        colorFrom && colorTo
+            ? { background: `linear-gradient(to left, transparent, ${colorFrom}, ${colorTo}, transparent)` }
+            : {}
+
     return (
         <div
             style={{
@@ -48,9 +57,11 @@ export function BorderBeam({
                     offsetAnchor: "90% 50%",
                     animation: `border-beam-anim ${duration}s infinite linear`,
                     animationDelay: `-${delay}s`,
+                    ...gradientStyle,
                 } as any}
                 className={cn(
-                    "absolute aspect-square bg-gradient-to-l",
+                    "absolute aspect-square",
+                    !colorFrom && !colorTo && "bg-gradient-to-l",
                     className
                 )}
             />

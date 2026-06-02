@@ -4,6 +4,8 @@ import * as React from "react"
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
+import Image from "next/image"
+import { DiaryEntry } from "@/types/diary"
 
 // --- Utility Function & Radix Primitives ---
 type ClassValue = string | number | boolean | null | undefined
@@ -198,15 +200,33 @@ const toolsList = [
 ]
 
 // --- The Final, Self-Contained PromptBox Component ---
-export const PromptBox = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
-    ({ className, ...props }, ref) => {
+interface PromptBoxProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+    isGenerating?: boolean
+    diaries?: DiaryEntry[]
+}
+
+export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
+    ({ className, isGenerating = false, diaries = [], ...props }, ref) => {
         const internalTextareaRef = React.useRef<HTMLTextAreaElement>(null)
         const fileInputRef = React.useRef<HTMLInputElement>(null)
         const [value, setValue] = React.useState("")
-        const [imagePreview, setImagePreview] = React.useState<string | null>(null)
+        const [attachedImages, setAttachedImages] = React.useState<string[]>([])
+        const [selectedFullImage, setSelectedFullImage] = React.useState<string | null>(null)
         const [selectedTool, setSelectedTool] = React.useState<string | null>(null)
         const [isPopoverOpen, setIsPopoverOpen] = React.useState(false)
         const [isImageDialogOpen, setIsImageDialogOpen] = React.useState(false)
+        const hoverTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+
+        const handleMouseEnter = () => {
+            if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+            setIsPopoverOpen(true)
+        }
+
+        const handleMouseLeave = () => {
+            hoverTimeoutRef.current = setTimeout(() => {
+                setIsPopoverOpen(false)
+            }, 150)
+        }
 
         React.useImperativeHandle(ref, () => internalTextareaRef.current!, [])
 
@@ -224,65 +244,204 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, React.TextareaHTM
             if (props.onChange) props.onChange(e)
         }
 
+        const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            if (e.key === 'Enter' && !e.shiftKey && !isGenerating) {
+                e.preventDefault()
+                const form = internalTextareaRef.current?.closest('form')
+                if (form && (value.trim().length > 0 || attachedImages.length > 0)) {
+                    form.requestSubmit()
+                    setValue("")
+                }
+            }
+            if (props.onKeyDown) props.onKeyDown(e)
+        }
+
+        React.useEffect(() => {
+            const form = internalTextareaRef.current?.closest("form")
+            if (!form) return
+
+            const handleReset = () => {
+                setAttachedImages([])
+                setValue("")
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = ""
+                }
+            }
+
+            form.addEventListener("reset", handleReset)
+            return () => {
+                form.removeEventListener("reset", handleReset)
+            }
+        }, [])
+
         const handlePlusClick = () => {
             fileInputRef.current?.click()
         }
 
-        const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-            const file = event.target.files?.[0]
-            if (file && file.type.startsWith("image/")) {
-                const reader = new FileReader()
-                reader.onloadend = () => {
-                    setImagePreview(reader.result as string)
-                }
-                reader.readAsDataURL(file)
+        const processFile = (file: File) => {
+            if (file.size > 5 * 1024 * 1024) {
+                alert(`"${file.name}" 파일의 크기가 5MB를 초과합니다. 5MB 이하의 이미지만 업로드 가능합니다.`)
+                return
             }
+
+            if (file.type.startsWith("image/")) {
+                const img = new window.Image()
+                img.src = URL.createObjectURL(file)
+                img.onload = () => {
+                    const canvas = document.createElement("canvas")
+                    const size = Math.min(img.width, img.height)
+                    canvas.width = 1024
+                    canvas.height = 1024
+                    const ctx = canvas.getContext("2d")
+                    if (ctx) {
+                        const sourceX = (img.width - size) / 2
+                        const sourceY = (img.height - size) / 2
+                        ctx.drawImage(img, sourceX, sourceY, size, size, 0, 0, 1024, 1024)
+                        const pngDataUrl = canvas.toDataURL("image/png")
+                        setAttachedImages(prev => {
+                            if (prev.length >= 10) {
+                                alert("이미지는 최대 10개까지 첨부할 수 있습니다.")
+                                return prev
+                            }
+                            return [...prev, pngDataUrl]
+                        })
+                    }
+                    URL.revokeObjectURL(img.src)
+                }
+            }
+        }
+
+        const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+            const files = event.target.files
+            if (!files) return
+
+            const fileList = Array.from(files)
+            if (attachedImages.length + fileList.length > 10) {
+                alert("이미지는 최대 10개까지 첨부할 수 있습니다.")
+                event.target.value = ""
+                return
+            }
+
+            fileList.forEach(processFile)
             event.target.value = ""
         }
 
-        const handleRemoveImage = (e: React.MouseEvent<HTMLButtonElement>) => {
+        const handleSelectReference = async (imageUrl: string) => {
+            try {
+                if (attachedImages.length >= 10) {
+                    alert("이미지는 최대 10개까지 첨부할 수 있습니다.")
+                    return
+                }
+
+                const response = await fetch(imageUrl)
+                const blob = await response.blob()
+                
+                const img = new window.Image()
+                img.src = URL.createObjectURL(blob)
+                img.onload = () => {
+                    const canvas = document.createElement("canvas")
+                    const size = Math.min(img.width, img.height)
+                    canvas.width = 1024
+                    canvas.height = 1024
+                    const ctx = canvas.getContext("2d")
+                    if (ctx) {
+                        const sourceX = (img.width - size) / 2
+                        const sourceY = (img.height - size) / 2
+                        ctx.drawImage(img, sourceX, sourceY, size, size, 0, 0, 1024, 1024)
+                        const pngDataUrl = canvas.toDataURL("image/png")
+                        setAttachedImages(prev => {
+                            if (prev.length >= 10) {
+                                alert("이미지는 최대 10개까지 첨부할 수 있습니다.")
+                                return prev
+                            }
+                            return [...prev, pngDataUrl]
+                        })
+                    }
+                    URL.revokeObjectURL(img.src)
+                }
+            } catch (err) {
+                console.error("Error referencing image:", err)
+                alert("참조 이미지를 불러오는 데 실패했습니다.")
+            }
+        }
+
+        const handleRemoveImage = (index: number, e: React.MouseEvent) => {
             e.stopPropagation()
-            setImagePreview(null)
+            setAttachedImages(prev => prev.filter((_, idx) => idx !== index))
             if (fileInputRef.current) {
                 fileInputRef.current.value = ""
             }
         }
 
-        const hasValue = value.trim().length > 0 || imagePreview
+        const hasValue = value.trim().length > 0 || attachedImages.length > 0
         const activeTool = selectedTool ? toolsList.find((t) => t.id === selectedTool) : null
         const ActiveToolIcon = activeTool?.icon
 
         return (
             <div className={cn("flex flex-col rounded-[28px] p-2 shadow-sm transition-colors bg-white border dark:bg-[#303030] dark:border-transparent cursor-text", className)}>
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" multiple />
+                
+                {/* 다중 첨부용 hidden inputs */}
+                {attachedImages.map((imgSrc, idx) => (
+                    <input key={idx} type="hidden" name="image" value={imgSrc} />
+                ))}
 
-                {imagePreview && (
-                    <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
-                        <div className="relative mb-1 w-fit rounded-[1rem] px-1 pt-1">
-                            <button type="button" className="transition-transform" onClick={() => setIsImageDialogOpen(true)}>
-                                <img src={imagePreview} alt="Image preview" className="h-14.5 w-14.5 rounded-[1rem]" />
-                            </button>
-                            <button
-                                onClick={handleRemoveImage}
-                                className="absolute right-2 top-2 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-white/50 dark:bg-[#303030] text-black dark:text-white transition-colors hover:bg-accent dark:hover:bg-[#515151]"
-                                aria-label="Remove image"
-                            >
-                                <XIcon className="h-4 w-4" />
-                            </button>
-                        </div>
-                        <DialogContent>
-                            <img src={imagePreview} alt="Full size preview" className="w-full max-h-[95vh] object-contain rounded-[24px]" />
-                        </DialogContent>
-                    </Dialog>
+                {/* 첨부 이미지 썸네일 그리드 */}
+                {attachedImages.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2 p-1 max-h-32 overflow-y-auto">
+                        {attachedImages.map((imgSrc, idx) => (
+                            <div key={idx} className="relative group w-16 h-16 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex-shrink-0">
+                                <Image
+                                    src={imgSrc}
+                                    alt={`첨부 이미지 ${idx + 1}`}
+                                    width={64}
+                                    height={64}
+                                    className="object-cover w-full h-full cursor-pointer hover:opacity-85 transition-opacity"
+                                    onClick={() => {
+                                        setSelectedFullImage(imgSrc)
+                                        setIsImageDialogOpen(true)
+                                    }}
+                                    unoptimized
+                                />
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleRemoveImage(idx, e)}
+                                    className="absolute top-1 right-1 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 hover:bg-black/80 text-white transition-colors"
+                                    aria-label="Remove image"
+                                >
+                                    <XIcon className="h-3 w-3" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
                 )}
+
+                {/* 이미지 확대보기 다이얼로그 */}
+                <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
+                    <DialogContent>
+                        {selectedFullImage && (
+                            <div className="relative w-full aspect-square max-h-[85vh] flex items-center justify-center">
+                                <Image
+                                    src={selectedFullImage}
+                                    alt="Full size preview"
+                                    fill
+                                    className="object-contain rounded-[24px]"
+                                    unoptimized
+                                />
+                            </div>
+                        )}
+                    </DialogContent>
+                </Dialog>
 
                 <textarea
                     ref={internalTextareaRef}
                     rows={1}
                     value={value}
                     onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
                     placeholder="Message..."
-                    className="custom-scrollbar w-full resize-none border-0 bg-transparent p-3 text-foreground dark:text-white placeholder:text-muted-foreground dark:placeholder:text-gray-300 focus:ring-0 focus-visible:outline-none min-h-12"
+                    disabled={isGenerating}
+                    className="custom-scrollbar w-full resize-none border-0 bg-transparent p-3 text-foreground dark:text-white placeholder:text-muted-foreground dark:placeholder:text-gray-300 focus:ring-0 focus-visible:outline-none min-h-12 disabled:opacity-50 disabled:cursor-not-allowed"
                     {...props}
                 />
 
@@ -305,39 +464,64 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, React.TextareaHTM
                                 </TooltipContent>
                             </Tooltip>
 
-                            <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <PopoverTrigger asChild>
-                                            <button type="button" className="flex h-8 items-center gap-2 rounded-full p-2 text-sm text-foreground dark:text-white transition-colors hover:bg-accent dark:hover:bg-[#515151] focus-visible:outline-none focus-visible:ring-ring">
-                                                <Settings2Icon className="h-4 w-4" />
-                                                {!selectedTool && "Tools"}
-                                            </button>
-                                        </PopoverTrigger>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" showArrow={true}>
-                                        <p>Explore Tools</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                                <PopoverContent side="top" align="start">
-                                    <div className="flex flex-col gap-1">
-                                        {toolsList.map((tool) => (
-                                            <button
-                                                key={tool.id}
-                                                onClick={() => {
-                                                    setSelectedTool(tool.id)
-                                                    setIsPopoverOpen(false)
-                                                }}
-                                                className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-accent dark:hover:bg-[#515151]"
-                                            >
-                                                <tool.icon className="h-4 w-4" />
-                                                <span>{tool.name}</span>
-                                                {tool.extra && <span className="ml-auto text-xs text-muted-foreground dark:text-gray-400">{tool.extra}</span>}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </PopoverContent>
-                            </Popover>
+                            {/* 참조 기능 팝오버 (호버 연동) */}
+                            <div 
+                                onMouseEnter={handleMouseEnter} 
+                                onMouseLeave={handleMouseLeave}
+                            >
+                                <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <PopoverTrigger asChild>
+                                                <button 
+                                                    type="button" 
+                                                    className="flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-foreground dark:text-white border border-zinc-200 dark:border-zinc-700 hover:bg-accent dark:hover:bg-[#515151] transition-colors focus-visible:outline-none"
+                                                >
+                                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                                                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                                                    </svg>
+                                                    참조
+                                                </button>
+                                            </PopoverTrigger>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" showArrow={true}>
+                                            <p>이전 그림일기 이미지 가져오기</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                    <PopoverContent 
+                                        side="top" 
+                                        align="start" 
+                                        className="w-80 p-3 bg-zinc-900/95 border border-white/10 rounded-2xl backdrop-blur-md"
+                                        onMouseEnter={handleMouseEnter} 
+                                        onMouseLeave={handleMouseLeave}
+                                    >
+                                        <h3 className="text-xs font-semibold text-zinc-400 mb-2">이전 일기에서 이미지 가져오기</h3>
+                                        {diaries.length === 0 ? (
+                                            <p className="text-xs text-zinc-500 py-4 text-center">참조할 일기가 없습니다.</p>
+                                        ) : (
+                                            <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                                {diaries.map((diary) => (
+                                                    <button
+                                                        key={diary.id}
+                                                        type="button"
+                                                        onClick={() => handleSelectReference(diary.image_path)}
+                                                        className="relative aspect-square rounded-lg overflow-hidden border border-white/5 hover:border-violet-500/50 transition-all duration-200 group"
+                                                    >
+                                                        <Image
+                                                            src={diary.image_path}
+                                                            alt={diary.prompt}
+                                                            fill
+                                                            sizes="60px"
+                                                            className="object-cover group-hover:scale-105 transition-transform duration-200"
+                                                        />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
 
                             {activeTool && (
                                 <>
@@ -374,15 +558,22 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, React.TextareaHTM
                                     <TooltipTrigger asChild>
                                         <button
                                             type="submit"
-                                            disabled={!hasValue}
+                                            disabled={!hasValue || isGenerating}
                                             className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none bg-black text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80 disabled:bg-black/40 dark:disabled:bg-[#515151]"
                                         >
-                                            <SendIcon className="h-6 w-6 text-bold" />
-                                            <span className="sr-only">Send message</span>
+                                            {isGenerating ? (
+                                                <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                                </svg>
+                                            ) : (
+                                                <SendIcon className="h-6 w-6 text-bold" />
+                                            )}
+                                            <span className="sr-only">{isGenerating ? 'Generating...' : 'Send message'}</span>
                                         </button>
                                     </TooltipTrigger>
                                     <TooltipContent side="top" showArrow={true}>
-                                        <p>Send</p>
+                                        <p>{isGenerating ? 'Generating...' : 'Send'}</p>
                                     </TooltipContent>
                                 </Tooltip>
                             </div>
