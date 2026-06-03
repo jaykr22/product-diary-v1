@@ -5,6 +5,8 @@ import Link from "next/link"
 import { useState, useRef, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
+import PricingModal from "@/components/dashboard/pricing-modal"
+import { createClient } from "@/lib/supabase/client"
 
 function cn(...inputs: (string | boolean | null | undefined)[]): string {
     return inputs.filter(Boolean).join(" ")
@@ -18,7 +20,29 @@ export default function DashboardNavbar() {
     const { user, signOut } = useAuth()
     const [isProfileOpen, setIsProfileOpen] = useState(false)
     const [isHovering, setIsHovering] = useState(false)
+    const [isPricingOpen, setIsPricingOpen] = useState(false)
+    const [profile, setProfile] = useState<{ plan: string | null } | null>(null)
     const popoverRef = useRef<HTMLDivElement>(null)
+
+    // Fetch user profile plan
+    useEffect(() => {
+        if (!user) {
+            setProfile(null)
+            return
+        }
+        const supabase = createClient()
+        const fetchProfile = async () => {
+            const { data } = await supabase
+                .from("users")
+                .select("plan")
+                .eq("id", user.id)
+                .single()
+            if (data) {
+                setProfile(data)
+            }
+        }
+        fetchProfile()
+    }, [user])
 
     // Close popover when clicking outside
     useEffect(() => {
@@ -37,6 +61,7 @@ export default function DashboardNavbar() {
     }
 
     return (
+        <>
         <nav className="fixed top-0 left-0 right-0 z-40 bg-transparent backdrop-blur-sm">
             <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
                 {/* Left: Logo */}
@@ -96,6 +121,35 @@ export default function DashboardNavbar() {
                             {/* Divider */}
                             <div className="mb-2 h-px bg-white/10" />
 
+                            {/* Pricing Button */}
+                            <button
+                                onClick={() => { setIsProfileOpen(false); setIsPricingOpen(true) }}
+                                className="flex w-full items-center justify-start gap-2.5 rounded-lg bg-white/5 px-3 py-2 text-sm font-medium text-zinc-300 transition-colors duration-200 hover:bg-white/10 hover:text-white"
+                            >
+                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                                </svg>
+                                플랜 업그레이드
+                            </button>
+
+                            {/* Manage Subscription Link */}
+                            {profile?.plan && profile.plan.toLowerCase() !== "free" && (
+                                <a
+                                    href="/api/customer-portal"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => setIsProfileOpen(false)}
+                                    className="flex w-full items-center justify-start gap-2.5 rounded-lg bg-white/5 px-3 py-2 text-sm font-medium text-zinc-300 transition-colors duration-200 hover:bg-white/10 hover:text-white"
+                                >
+                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                        <polyline points="15 3 21 3 21 9" />
+                                        <line x1="10" y1="14" x2="21" y2="3" />
+                                    </svg>
+                                    Manage Subscription
+                                </a>
+                            )}
+
                             {/* Sign Out Button */}
                             <button
                                 onClick={handleSignOut}
@@ -121,5 +175,8 @@ export default function DashboardNavbar() {
                 </Popover>
             </div>
         </nav>
+
+        <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} />
+        </>
     )
 }

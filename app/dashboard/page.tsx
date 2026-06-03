@@ -4,7 +4,6 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
-import DashboardNavbar from "@/components/dashboard/navbar"
 import PromptArea from "@/components/dashboard/prompt-area"
 import GallerySidebar from "@/components/dashboard/gallery-sidebar"
 import { DiaryEntry } from "@/types/diary"
@@ -98,9 +97,6 @@ export default function DashboardPage() {
 
     return (
         <div className="flex min-h-screen bg-[#0a0a0f]">
-            {/* 내비게이션 */}
-            <DashboardNavbar />
-
             {/* 좌측 갤러리 사이드바 */}
             <GallerySidebar diaries={diaries} loading={loadingDiaries} onDeleteDiary={handleDeleteDiary} />
 

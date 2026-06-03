@@ -6,6 +6,8 @@ import { useState, useRef, useEffect } from "react"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/AuthContext"
+import PricingModal from "@/components/dashboard/pricing-modal"
+import { createClient } from "@/lib/supabase/client"
 
 const NAV_LINKS = [
   { label: "Features", href: "#features" },
@@ -16,9 +18,31 @@ const NAV_LINKS = [
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [isPricingOpen, setIsPricingOpen] = useState(false)
+  const [profile, setProfile] = useState<{ plan: string | null } | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
   const { user, loading, signOut } = useAuth()
+
+  // Fetch user profile plan
+  useEffect(() => {
+    if (!user) {
+      setProfile(null)
+      return
+    }
+    const supabase = createClient()
+    const fetchProfile = async () => {
+      const { data } = await supabase
+        .from("users")
+        .select("plan")
+        .eq("id", user.id)
+        .single()
+      if (data) {
+        setProfile(data)
+      }
+    }
+    fetchProfile()
+  }, [user])
 
   // 드롭다운 외부 클릭 시 닫기
   useEffect(() => {
@@ -39,6 +63,7 @@ export default function Navbar() {
   }
 
   return (
+    <>
     <header className="fixed top-0 left-0 right-0 z-50">
 
       {/* 글래스모피즘 배경 */}
@@ -139,7 +164,7 @@ export default function Navbar() {
                 )}
               >
                 {/* 사용자 정보 */}
-                <div className="border-b border-white/5 px-4 py-3">
+                <div className="px-4 py-3">
                   <p className="truncate text-sm font-medium text-white">
                     {user.user_metadata?.full_name ?? "사용자"}
                   </p>
@@ -147,6 +172,37 @@ export default function Navbar() {
                     {user.email}
                   </p>
                 </div>
+
+                {/* 플랜 업그레이드 + Manage Subscription */}
+                <div className="px-3 pb-2 flex flex-col gap-1.5">
+                  <button
+                    onClick={() => { setDropdownOpen(false); setIsPricingOpen(true) }}
+                    className="flex w-full items-center justify-start gap-2 rounded-lg bg-white/80 px-3 py-2 text-sm font-semibold text-zinc-900 transition-all duration-200 hover:bg-white"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                    </svg>
+                    플랜 업그레이드
+                  </button>
+                  {profile?.plan && profile.plan.toLowerCase() !== "free" && (
+                    <a
+                      href="/api/customer-portal"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setDropdownOpen(false)}
+                      className="flex w-full items-center justify-start gap-2 rounded-lg bg-white/80 px-3 py-2 text-sm font-semibold text-zinc-900 transition-all duration-200 hover:bg-white"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      구독 관리
+                    </a>
+                  )}
+                </div>
+
+                {/* Divider */}
+                <div className="mx-3 h-px bg-white/10" />
 
                 {/* 메뉴 아이템 */}
                 <div className="p-1.5">
@@ -296,6 +352,35 @@ export default function Navbar() {
                   <p className="truncate text-xs text-zinc-500">{user.email}</p>
                 </div>
               </div>
+              {/* 플랜 업그레이드 + Manage Subscription */}
+              <button
+                onClick={() => { setMobileOpen(false); setIsPricingOpen(true) }}
+                className="flex w-full items-center justify-start gap-2 rounded-lg bg-white/80 px-3 py-2 text-sm font-semibold text-zinc-900 transition-all duration-200 hover:bg-white"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                </svg>
+                플랜 업그레이드
+              </button>
+              {profile?.plan && profile.plan.toLowerCase() !== "free" && (
+                <a
+                  href="/api/customer-portal"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex w-full items-center justify-start gap-2 rounded-lg bg-white/80 px-3 py-2 text-sm font-semibold text-zinc-900 transition-all duration-200 hover:bg-white"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  구독 관리
+                </a>
+              )}
+
+              {/* Divider */}
+              <div className="h-px bg-white/10" />
+
               <Link
                 href="/dashboard"
                 onClick={() => setMobileOpen(false)}
@@ -366,5 +451,8 @@ export default function Navbar() {
       </div>
 
     </header>
+
+    <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} />
+  </>
   )
 }
