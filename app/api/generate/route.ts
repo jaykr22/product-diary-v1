@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { buildDiaryImagePrompt } from "@/lib/prompts/diary-image-prompt"
+
 
 export async function POST(request: Request) {
     try {
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
         }
 
         // 2. 요청 파라미터 및 API 키 검증
-        const { prompt, image, images } = await request.json()
+        const { prompt } = await request.json()
         if (!prompt || typeof prompt !== "string") {
             return NextResponse.json({ error: "일기 내용(prompt)이 유효하지 않습니다." }, { status: 400 })
         }
@@ -29,54 +29,61 @@ export async function POST(request: Request) {
             )
         }
 
-        // 3. 시스템 프롬프트로 이미지 생성 프롬프트 강화 (lib/prompts/diary-image-prompt.ts)
-        const enhancedPrompt = buildDiaryImagePrompt(prompt)
+        // 3. [DEBUG] GPT-4o-mini 분석 단계를 완전히 제거하고 사용자 원본 프롬프트를 직접 사용
+        const finalPrompt = prompt
+
+        console.log("=================== FINAL PROMPT (DIRECT) ===================")
+        console.log(finalPrompt)
+        console.log("=============================================================")
 
         // 4. OpenAI gpt-image-1 API 호출
-        let response: Response
-
-        const hasImages = (Array.isArray(images) && images.length > 0) || (typeof image === "string" && image.startsWith("data:"))
-        const targetImage = Array.isArray(images) && images.length > 0 ? images[0] : image
-
-        if (hasImages && targetImage) {
-            const base64Data = targetImage.split(",")[1]
-            if (!base64Data) {
-                return NextResponse.json({ error: "유효하지 않은 이미지 데이터입니다." }, { status: 400 })
-            }
-            const imageBuffer = Buffer.from(base64Data, "base64")
-            const imageBlob = new Blob([imageBuffer], { type: "image/png" })
-
-            const openAiFormData = new FormData()
-            openAiFormData.append("model", "gpt-image-1")
-            openAiFormData.append("prompt", enhancedPrompt)
-            openAiFormData.append("image", imageBlob, "image.png")
-            openAiFormData.append("n", "1")
-            openAiFormData.append("size", "1024x1024")
-
-            response = await fetch("https://api.openai.com/v1/images/edits", {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${openaiApiKey}`,
-                },
-                body: openAiFormData,
-            })
-        } else {
-            response = await fetch("https://api.openai.com/v1/images/generations", {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${openaiApiKey}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    model: "gpt-image-1",
-                    prompt: enhancedPrompt,
-                    n: 1,
-                    size: "1024x1024",
-                }),
-            })
+        const requestBody = {
+            model: "gpt-image-1",
+            prompt: finalPrompt,
+            n: 1,
+            size: "1024x1024",
+            quality: "high",
         }
 
+        // [DEBUG 1] 실제 전송할 요청 Body 전체 출력
+        console.log("=================== REQUEST BODY ===================")
+        console.log(JSON.stringify(requestBody, null, 2))
+        console.log("====================================================")
+
+        const response = await fetch("https://api.openai.com/v1/images/generations", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${openaiApiKey}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+        })
+
+        // [DEBUG 2] 응답 헤더 전체 출력
+        console.log("=================== RESPONSE HEADERS ===================")
+        response.headers.forEach((value, key) => {
+            console.log(`  ${key}: ${value}`)
+        })
+        console.log("=========================================================")
+
         const responseData = await response.json()
+
+        // [DEBUG 3] 응답 데이터 전체 출력 (revised_prompt, 모델 정보, 메타데이터 포함)
+        console.log("=================== RESPONSE DATA (FULL) ===================")
+        const debugData = {
+            status: response.status,
+            statusText: response.statusText,
+            created: responseData.created,
+            usage: responseData.usage,
+            background: responseData.background,
+            output_format: responseData.output_format,
+            data_length: responseData.data?.length,
+            first_item_keys: responseData.data?.[0] ? Object.keys(responseData.data[0]) : [],
+            revised_prompt: responseData.data?.[0]?.revised_prompt ?? "없음",
+            model: responseData.model ?? "응답에 포함 안됨",
+        }
+        console.log(JSON.stringify(debugData, null, 2))
+        console.log("=============================================================")
 
         if (!response.ok) {
             console.error("OpenAI API Error:", responseData)
@@ -142,7 +149,7 @@ export async function POST(request: Request) {
             )
         }
 
-        return NextResponse.json({ success: true, data: dbData })
+        return NextResponse.json({ success: true, data: dbData, finalPrompt: finalPrompt })
     } catch (error: any) {
         console.error("API Route Internal Error:", error)
         return NextResponse.json({ error: error.message || "서버 내부 오류가 발생했습니다." }, { status: 500 })
